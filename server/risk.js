@@ -1,0 +1,30 @@
+const clamp=(n,min=0,max=100)=>Math.max(min,Math.min(max,n));
+function calculateRiskScore(data={}) {
+  const s=data.symptoms||{}, joints=data.joints||{}, lab=data.labs||{}, sensor=data.sensor||{};
+  const valid=n=>n!==''&&n!==null&&n!==undefined&&Number.isFinite(Number(n));
+  const jointEntries=Object.entries(joints).filter(([,v])=>v?.selected);
+  const totals=jointEntries.reduce((a,[,v])=>({t:a.t+Number(v.tenderness||0),w:a.w+Number(v.swelling||0),m:a.m+Number(v.movement||0)}),{t:0,w:0,m:0});
+  const symptomItems=[s.morningStiffness?0.25:0,s.jointPain?0.18:0,s.jointSwelling?0.20:0,s.fatigue?0.08:0,s.bilateral?0.12:0,s.overSixWeeks?0.12:0,s.dailyDifficulty?0.05:0,clamp(Number(s.painfulCount||0)/10)*0.10,clamp(Number(s.swollenCount||0)/8)*0.10];
+  const symptomScore=clamp(symptomItems.reduce((a,b)=>a+b,0)*100);
+  const jointScore=jointEntries.length?clamp((jointEntries.length/6)*30+(totals.t/Math.max(1,jointEntries.length*3))*25+(totals.w/Math.max(1,jointEntries.length*3))*30+(totals.m/Math.max(1,jointEntries.length*3))*15):0;
+  const marker=[];
+  if(valid(lab.crp)) marker.push(Number(lab.crp)>5?1:0.15);
+  if(valid(lab.esr)) marker.push(Number(lab.esr)>20?1:0.15);
+  if(lab.rf==='positive') marker.push(1); else if(lab.rf==='negative') marker.push(0.12);
+  if(lab.antiCcp==='positive') marker.push(1); else if(lab.antiCcp==='negative') marker.push(0.12);
+  const labScore=marker.length?clamp(marker.reduce((a,b)=>a+b,0)/marker.length*100):0;
+  const sensorScore=sensor.simulated?clamp((100-Number(sensor.movementSymmetry||100))*0.35+(100-Number(sensor.activityScore||100))*0.25+Number(sensor.movementLimitation||0)*0.25+Number(sensor.handMotionScore||100)*-0.15+15):0;
+  const available=[{score:symptomScore,w:30,ok:Object.keys(s).length>0},{score:jointScore,w:25,ok:Object.keys(joints).length>0},{score:labScore,w:25,ok:marker.length>0},{score:sensorScore,w:20,ok:!!sensor.simulated}].filter(x=>x.ok);
+  const score=available.length?Math.round(available.reduce((a,x)=>a+x.score*x.w,0)/available.reduce((a,x)=>a+x.w,0)):0;
+  const factors=[];
+  if(s.morningStiffness) factors.push({name:'Morning stiffness',level:'High',contribution:14});
+  if(s.jointSwelling||totals.w>0) factors.push({name:'Joint swelling',level:'High',contribution:13});
+  if(s.bilateral) factors.push({name:'Bilateral symptoms',level:'Moderate',contribution:9});
+  if(s.overSixWeeks) factors.push({name:'Symptoms over 6 weeks',level:'Moderate',contribution:9});
+  if(jointEntries.length) factors.push({name:'Affected joint burden',level:jointEntries.length>3?'High':'Moderate',contribution:Math.round(jointScore*.25)});
+  if(marker.some(x=>x===1)) factors.push({name:'Laboratory markers',level:'High',contribution:Math.round(labScore*.25)});
+  if(sensor.simulated) factors.push({name:'Simulated sensor activity',level:sensorScore>50?'Moderate':'Low',contribution:Math.round(sensorScore*.2)});
+  const missingData=[]; if(!s||!Object.keys(s).length)missingData.push('Symptom questionnaire');if(!Object.keys(joints).length)missingData.push('Joint assessment');if(!marker.length)missingData.push('Laboratory data');if(!sensor.simulated)missingData.push('Sensor data (simulated)');
+  return {score,category:score<40?'Low screening priority':score<70?'Intermediate screening priority':'High screening priority',contributingFactors:factors,missingData,components:{symptoms:Math.round(symptomScore),joints:Math.round(jointScore),laboratory:Math.round(labScore),sensor:Math.round(sensorScore)},limitations:'Research prototype heuristic only; not clinically validated and not a probability of rheumatoid arthritis.'};
+}
+module.exports={calculateRiskScore};

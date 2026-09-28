@@ -1,0 +1,13 @@
+const Database = require('better-sqlite3');
+const path = require('path');
+const fs = require('fs');
+const dir = path.join(__dirname, '..', 'data'); fs.mkdirSync(dir, {recursive:true});
+const db = new Database(path.join(dir, 'ra-sense.sqlite'));
+db.pragma('journal_mode = WAL');
+db.exec(`CREATE TABLE IF NOT EXISTS screenings (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, patient_id TEXT, patient_json TEXT NOT NULL, status TEXT DEFAULT 'draft');
+CREATE TABLE IF NOT EXISTS symptom_assessments (screening_id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS joint_assessments (screening_id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS lab_results (screening_id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sensor_data (screening_id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS risk_results (screening_id TEXT PRIMARY KEY, data_json TEXT NOT NULL);`);
+module.exports = db;
